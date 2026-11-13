@@ -69,7 +69,6 @@ async function searchSource(source: SourceConfig, wd: string): Promise<SourceSea
   // 用户可控地址发起服务端请求，必须先过 SSRF 校验（协议白名单 + 内网/保留地址）
   const verdict = await checkUpstreamAllowed(source.url);
   if (!verdict.ok) {
-    console.error('[search-debug] source blocked by SSRF check:', source.url, verdict.reason);
     return finish({ sourceKey: source.key, ok: false, list: [], error: verdict.reason });
   }
 
@@ -128,24 +127,15 @@ async function searchSource(source: SourceConfig, wd: string): Promise<SourceSea
     // 死线先到时 run 仍会在后台被 abort 并 reject，必须先挂 catch 防未处理 rejection
     const runPromise = run()
       .then(finish)
-      .catch((err: unknown): SourceSearchOutcome => {
-        console.error(
-          '[search-debug] source fetch failed:',
-          source.url,
-          err instanceof Error ? err.stack || err.message : String(err),
-          '| cause:',
-          err instanceof Error && err.cause instanceof Error
-            ? `${err.cause.name}: ${err.cause.message} code=${(err.cause as NodeJS.ErrnoException).code ?? ''} cause2=${String((err.cause as Error & { cause?: unknown }).cause ?? '')}`
-            : String(err instanceof Error ? err.cause ?? '' : '')
-        );
-        return finish({
+      .catch((err: unknown): SourceSearchOutcome =>
+        finish({
           sourceKey: source.key,
           ok: false,
           list: [],
           error: err instanceof Error ? err.message : '请求失败',
           timedOut: isTimeoutError(err),
-        });
-      });
+        })
+      );
     return await Promise.race([runPromise, deadline]);
   } catch (err) {
     return finish({
